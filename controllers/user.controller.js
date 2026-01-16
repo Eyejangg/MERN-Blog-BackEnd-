@@ -8,13 +8,13 @@ exports.register = async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).send({
-      message: "Please Provide Username and Password!",
+      message: "Please provide username and password",
     });
   }
   const existingUser = await UserModel.findOne({ username });
   if (existingUser) {
     return res.status(400).send({
-      message: "This Username is already existed!",
+      message: "This username is already existed",
     });
   }
 
@@ -26,12 +26,12 @@ exports.register = async (req, res) => {
       password: hashedPassword,
     });
     res.status(201).send({
-      message: "User registered successfully!",
+      message: "User registered successfully",
     });
   } catch (error) {
     res.status(500).send({
       message:
-        error.message || "Some errors occured while registering a new user!",
+        error.message || "Some errors occurred while registering a new user",
     });
   }
 };
@@ -40,28 +40,28 @@ exports.login = async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).send({
-      message: "Please Provide Username and Password!",
+      message: "Please provide username and password",
     });
   }
   try {
     const userDoc = await UserModel.findOne({ username });
     if (!userDoc) {
-      return res.status(404).send({ message: "User not found!" });
+      return res.status(404).send({ message: "User not found" });
     }
     const isPasswordMatched = bcrypt.compareSync(password, userDoc.password);
     if (!isPasswordMatched) {
-      return res.status(401).send({ message: "Invalid Credentials!" });
+      return res.status(401).send({ message: "Invalid credentials" });
     }
-    //Login successfully!
+    //login successfully
     jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
       if (err) {
-        return res
-          .status(500)
-          .send({ message: "Internal Server Error: Authentication failed!" });
+        return res.status(500).send({
+          message: "Internal server error: Authentication failed",
+        });
       }
       //token generation
       res.send({
-        message: "User logged in successfully!",
+        message: "User logged in successfully",
         id: userDoc._id,
         username,
         accessToken: token,
@@ -69,7 +69,7 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     res.status(500).send({
-      message: error.message || "Some errors occured while logging in user!",
+      message: error.message || "Some errors occurred while logging in user",
     });
   }
 };

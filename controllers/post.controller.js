@@ -1,39 +1,62 @@
 const PostModel = require("../models/Post");
 
+//========== Function: สร้าง Blog Post ใหม่ ==========
+// ฟังก์ชันนี้รับข้อมูล title, summary, content และไฟล์รูปภาพ
+// แล้วบันทึกลงฐานข้อมูล MongoDB
 exports.createPost = async (req, res) => {
-  const { title, summary, content, cover, author } = req.body;
-  if (!title || !summary || !content || !cover || !author) {
-    return res.status(400).send({
-      message:
-        "Please Provide title, summary, content, cover image and author !",
+  // ตรวจสอบว่ามีไฟล์รูปภาพหรือไม่
+  if (!req.file) {
+    return res.status(400).json({ message: "Image is required" });
+  }
+
+  // ตรวจสอบว่า Supabase อัพโหลดไฟล์สำเร็จและได้ URL กลับมาหรือไม่
+  if (!req.file.supabaseUrl) {
+    return res.status(400).json({
+      message: "Failed to upload image. Please try again",
     });
   }
+
+  // ดึงข้อมูล title, summary, content จาก request body
+  const { title, summary, content } = req.body;
+  // ดึง ID ของผู้สร้าง post จาก JWT token (เก็บไว้ใน authJWT middleware)
+  const authorId = req.authorId;
+
+  // ตรวจสอบว่ามีข้อมูลทั้งหมดหรือไม่
+  if (!title || !summary || !content) {
+    return res.status(400).send({
+      message: "Please provide all fields",
+    });
+  }
+
   try {
+    // สร้าง document ใหม่ในฐานข้อมูล MongoDB
     const postDoc = await PostModel.create({
       title,
       summary,
       content,
-      cover,
-      author,
+      cover: req.file.supabaseUrl, // บันทึก URL รูปภาพจาก Supabase
+      author: authorId, // บันทึก ID ของผู้สร้าง
     });
+
+    // ถ้าการสร้าง document ล้มเหลว ส่ง error
     if (!postDoc) {
       return res.status(500).send({
-        message: "Cannot create post!",
+        message: "Cannot create a new post",
       });
     }
-    res.status(201).send({
-      message: "Post created successfully!",
-      data: postDoc,
-    });
+
+    // ส่ง response สำเร็จพร้อมข้อมูล post ที่สร้างขึ้น
+    res.send({ message: "Create a new post successfully", data: postDoc });
   } catch (error) {
+    // จัดการ error ที่เกิดขึ้น
     res.status(500).send({
       message:
-        error.message || "Some errors occured while creating a new post!",
+        error.message || "Some errors occurred while registering a new user",
     });
   }
 };
 
-exports.getAll = async (req, res) => {
+exports.getPosts = async (req, res) => {
   try {
     const posts = await PostModel.find()
       .populate("author", ["username"])
@@ -41,35 +64,39 @@ exports.getAll = async (req, res) => {
       .limit(20);
     if (!posts) {
       return res.status(404).send({
-        message: "Posts Not found!",
+        message: "Post not found",
       });
     }
-    return res.status(200).send(posts);
+    res.send(posts);
   } catch (error) {
-    return res.status(500).send({
-      message: error.message || "Some error occurred while Geting all posts.",
+    res.status(500).send({
+      message:
+        error.message || "Some errors occurred while registering a new user",
     });
   }
 };
 
 exports.getById = async (req, res) => {
-  const id = req.params.id;
+  const { id } = req.params;
   if (!id) {
     return res.status(400).send({
-      message: "Post ID is missing!",
+      message: "Post Id is missing",
     });
   }
   try {
     const post = await PostModel.findById(id).populate("author", ["username"]);
+    // .sort({ createdAt: -1 })
+    // .limit(20);
     if (!post) {
       return res.status(404).send({
-        message: "Post Not found!",
+        message: "Post not found",
       });
     }
-    return res.status(200).send(post);
+    res.send(post);
   } catch (error) {
-    return res.status(500).send({
-      message: error.message || "Some error occurred while Geting the post.",
+    res.status(500).send({
+      message:
+        error.message || "Some errors occurred while registering a new user",
     });
   }
 };
@@ -78,74 +105,101 @@ exports.getByAuthorId = async (req, res) => {
   const { id } = req.params;
   if (!id) {
     return res.status(400).send({
-      message: "Author ID is missing!",
+      message: "Author id is missing",
     });
   }
   try {
     const posts = await PostModel.find({ author: id })
       .populate("author", ["username"])
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(20);
     if (!posts) {
       return res.status(404).send({
-        message: "Posts Not found!",
+        message: "Post not found",
       });
     }
-    return res.status(200).send(posts);
+    res.send(posts);
+  } catch (error) {
+    res.status(500).send({
+      message:
+        error.message || "Some errors occurred while registering a new user",
+    });
+  }
+};
+
+exports.upDatePost = async (req, res) => {
+  const { id } = req.params;
+  const authorId = req.authorId;
+  if (!id) {
+    return res.status(400).send({
+      message: "Post Id is missing",
+    });
+  }
+  const { title, summary, content, cover } = req.body;
+  if (!title || !summary || !content || !cover) {
+    return res.status(400).send({
+      message: "Please provide all fields",
+    });
+  }
+  try {
+    const postDoc = await PostModel.findOne({ _id: id, author: authorId });
+
+    if (!postDoc) {
+      return res.status(404).send({ message: "Post not found" });
+    }
+    if (postDoc.length === 0) {
+      return res.status(403).send({
+        message:
+          "Unauthorize to edit this post, because you are not the author of this post",
+      });
+    } else {
+      // postDoc.title = title;
+      // postDoc.summary = summary;
+      // postDoc.content = content;
+      // postDoc.cover = cover;
+      // await postDoc.save();
+      const newPost = await PostModel.findOneAndUpdate(
+        { author: authorId, _id: id },
+        { title, summary, content, cover },
+        {
+          new: true,
+        }
+      );
+      if (!newPost) {
+        return res.status(500).send({ message: "Cannot update this post" });
+      }
+      res.send({ message: "Post updated successfully" });
+    }
   } catch (error) {
     return res.status(500).send({
       message:
-        error.message || "Some error occurred while Geting posts by author.",
+        error.message || "Some errors occurred while registering a new user",
     });
   }
 };
 
-exports.updateById = async (req, res) => {
-  const id = req.params.id;
-  if (!id) {
-    return res.status(400).send({
-      message: "ID is missing!",
-    });
-  }
-  try {
-    const updatedPost = await PostModel.findByIdAndUpdate(id, req.body, {
-      new: true,
-    });
-    if (!updatedPost) {
-      return res.status(404).send({
-        message: "Post Not found!",
-      });
-    }
-    return res.status(200).send({
-      message: "Post updated successfully!",
-      data: updatedPost,
-    });
-  } catch (error) {
-    return res.status(500).send({
-      message: error.message || "Some error occurred while updating the post.",
-    });
-  }
-};
+exports.deletePost = async (req, res) => {
+  const { id } = req.params;
+  const authorId = req.authorId;
 
-exports.deleteById = async (req, res) => {
-  const id = req.params.id;
   if (!id) {
     return res.status(400).send({
-      message: "ID is missing!",
+      message: "Post Id is missing",
     });
   }
   try {
-    const deletedPost = await PostModel.findByIdAndDelete(id);
-    if (!deletedPost) {
-      return res.status(404).send({
-        message: "Post Not found!",
-      });
-    }
-    return res.status(200).send({
-      message: "Post deleted successfully!",
+    const postDoc = await PostModel.findOneAndDelete({
+      author: authorId,
+      _id: id,
     });
+    if (!postDoc) {
+      return res.status(500).send({ message: "Cannot delete this post" });
+    }
+    res.send({ message: "Post deleted successfully" });
   } catch (error) {
     return res.status(500).send({
-      message: error.message || "Some error occurred while deleting the post.",
+      message:
+        error.message || "Some errors occurred while registering a new user",
     });
   }
 };
