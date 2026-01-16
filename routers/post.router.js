@@ -23,7 +23,13 @@ router.get("/:id", postController.getById);
 router.get("/author/:id", postController.getByAuthorId);
 
 //http://localhost:5000/api/v1/post/1
-router.put("/:id", authJwt.verifyToken, postController.upDatePost);
+router.put(
+  "/:id",
+  authJwt.verifyToken,
+  upload,
+  uploadToSupabase,
+  postController.upDatePost
+);
 
 //http://localhost:5000/api/v1/post/1
 router.delete("/:id", authJwt.verifyToken, postController.deletePost);
