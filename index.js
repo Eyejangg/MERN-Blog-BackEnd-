@@ -32,8 +32,14 @@ if (!DB_URL) {
     });
 }
 //use Router
-app.use("/api/v1/user", userRouter);
-app.use("/api/v1/post", postRouter);
-app.listen(PORT, () => {
-  console.log("Server is running on http://localhost:" + PORT);
-});
+ app.use("/api/v1/user", userRouter);
+ app.use("/api/v1/post", postRouter);
+
+// Start the server only if this file is run directly
+if (require.main === module) {
+   app.listen(PORT, () => {
+     console.log("Server is running on http://localhost:" + PORT);
+   });
+}
+
+module.exports = app;
