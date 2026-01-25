@@ -8,11 +8,25 @@ const supabaseConfig = require("../config/supabase.config"); // Supabase configu
 const SUPABASE_BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME;
 const bucketName = process.env.SUPABASE_BUCKET_NAME || "blog-files"; // ใช้ default ถ้ายังไม่มี
 
+// ตรวจสอบว่ามี Service Role Key หรือไม่
+if (!supabaseConfig.supabaseServiceRoleKey) {
+  console.warn(
+    "⚠️  SUPABASE_SERVICE_ROLE_KEY is missing. Using SUPABASE_ANON_KEY instead (may have limited permissions)"
+  );
+}
+
 // สร้าง Supabase client โดยใช้ Service Role Key เพื่อมีสิทธิ์อัพโหลดไฟล์
 // (Anon Key มีสิทธิ์จำกัด ต้องใช้ Service Role Key ในการอัพโหลด)
 const supabase = createClient(
   supabaseConfig.supabaseUrl,
-  supabaseConfig.supabaseServiceRoleKey || supabaseConfig.supabaseAnonKey
+  supabaseConfig.supabaseServiceRoleKey || supabaseConfig.supabaseAnonKey,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  }
 );
 const supabaseStorage = supabase.storage;
 
@@ -20,7 +34,7 @@ const supabaseStorage = supabase.storage;
 // ตั้งค่า multer เพื่อเก็บไฟล์ในหน่วยความจำ (เตรียมส่งไปยัง Supabase)
 const upload = multer({
   storage: multer.memoryStorage(), // เก็บในหน่วยความจำแทนดิสก์
-  limits: { fileSize: 1000000 }, // จำกัดขนาดไฟล์ 1MB
+  limits: { fileSize: 5 * 1024 * 1024 }, // จำกัดขนาดไฟล์ 5MB
   fileFilter: (req, file, cb) => {
     // เรียกฟังก์ชันตรวจสอบประเภทไฟล์
     checkFileType(file, cb);
@@ -61,6 +75,16 @@ async function uploadToSupabase(req, res, next) {
   }
 
   try {
+    // ตรวจสอบ configuration ก่อน upload
+    if (!supabaseConfig.supabaseUrl) {
+      throw new Error("SUPABASE_URL is not configured in .env");
+    }
+    if (!supabaseConfig.supabaseServiceRoleKey && !supabaseConfig.supabaseAnonKey) {
+      throw new Error("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY is required in .env");
+    }
+
+    console.log(`🚀 Starting upload to bucket: ${bucketName}`);
+
     // สร้างชื่อไฟล์ที่ไม่ซ้ำกัน: timestamp + ชื่อเดิม
     const fileName = `${Date.now()}-${req.file.originalname}`;
     // กำหนด path ที่จัดเก็บไฟล์ใน Supabase
@@ -76,7 +100,8 @@ async function uploadToSupabase(req, res, next) {
 
     // ถ้าเกิด error ในการอัพโหลด ทำการ throw error
     if (error) {
-      throw error;
+      console.error("Supabase error details:", JSON.stringify(error, null, 2));
+      throw new Error(`Supabase error: ${error.message || JSON.stringify(error)}`);
     }
 
     // ดึง public URL ของไฟล์จาก Supabase
@@ -98,9 +123,10 @@ async function uploadToSupabase(req, res, next) {
   } catch (error) {
     // ถ้าเกิด error ส่ง response error ไปยัง client
     console.error("✗ Supabase upload error:", error.message);
+    console.error("Full error:", error);
     res.status(500).json({
-      message:
-        error.message || "Something went wrong while uploading to supabase",
+      message: error.message || "Something went wrong while uploading to supabase",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
